@@ -6,3 +6,5 @@ python_dotenv
 langchain-google-genai
 fastapi
 uvicorn
+mcp
+langgraph
