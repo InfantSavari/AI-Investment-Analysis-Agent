@@ -8,7 +8,18 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from graph import run_analysis
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Agentic AI API")
+
+# Add CORS middleware to allow requests from any frontend domain
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
+)
 
 class AnalysisRequest(BaseModel):
     ticker: str
