@@ -18,7 +18,7 @@ export default function Home() {
     setReport(null);
 
     try {
-      const res = await fetch('/api/analyze', {
+      const res = await fetch('https://ai-investment-analysis-agent.onrender.com/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
