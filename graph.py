@@ -3,7 +3,7 @@ import asyncio
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
+
 from langchain_core.messages import SystemMessage, HumanMessage
 from dotenv import load_dotenv
 
@@ -337,7 +337,7 @@ async def run_analysis(ticker: str):
     """Helper function to run the full graph for a given ticker, utilizing a 1-day SQLite cache."""
     print(f"Starting Multi-Agent Analysis for {ticker}...")
     
-    # 1. Check if we already generated a report today
+    
     cached_report = get_cached_report(ticker)
     if cached_report:
         print(f"\n[CACHE HIT] Found existing report generated today for {ticker}. Skipping agents...")
@@ -345,15 +345,14 @@ async def run_analysis(ticker: str):
         print(cached_report)
         return cached_report
         
-    # 2. If no cache, run the LangGraph agents
+
     print(f"\n[CACHE MISS] No report generated today for {ticker}. Invoking Agents...\n")
     initial_state = {"ticker": ticker}
     
-    # Invoke the graph asynchronously
+
     final_state = await app.ainvoke(initial_state)
     report = final_state.get("final_report", "No report generated.")
     
-    # 3. Save the newly generated report to the database
     if report != "No report generated.":
         save_report(ticker, report)
         print(f"\n[CACHE STORE] Saved {ticker} report to database for today.")
