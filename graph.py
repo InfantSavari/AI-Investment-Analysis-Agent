@@ -12,6 +12,16 @@ from main import fetch_alpha_vantage
 
 load_dotenv()
 
+def _get_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, list):
+        return "\n".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return str(content)
+
 # Define the state that our graph will pass between agents
 class GraphState(TypedDict):
     ticker: str
@@ -76,7 +86,7 @@ Return a JSON object matching this schema:
         HumanMessage(content=prompt)
     ])
     
-    return {"qualitative_analysis": response.content}
+    return {"qualitative_analysis": _get_text(response.content)}
 
 async def quantitative_agent_node(state: GraphState):
     """Quantitative Analysis Agent using Gemini (Independent context)"""
@@ -141,7 +151,7 @@ Return a JSON object matching this schema:
         HumanMessage(content=prompt)
     ])
     
-    return {"quantitative_analysis": response.content}
+    return {"quantitative_analysis": _get_text(response.content)}
 
 async def risk_agent_node(state: GraphState):
     """Risk Analysis Agent using Groq"""
@@ -201,7 +211,7 @@ Return a JSON object matching this schema:
         HumanMessage(content=prompt)
     ])
     
-    return {"risk_analysis": response.content}
+    return {"risk_analysis": _get_text(response.content)}
 
 async def synthesizer_node(state: GraphState):
     """Synthesizer (The Arbiter) Agent using Gemini"""
@@ -264,7 +274,7 @@ Return a JSON object matching this schema:
         HumanMessage(content=prompt)
     ])
     
-    return {"synthesized_report": response.content}
+    return {"synthesized_report": _get_text(response.content)}
 
 async def decision_maker_node(state: GraphState):
     """Decision Maker Agent using Gemini"""
@@ -346,7 +356,7 @@ Output ONLY valid Markdown. Use this exact structure:
         HumanMessage(content=prompt)
     ])
     
-    return {"final_report": response.content}
+    return {"final_report": _get_text(response.content)}
 
 # Build the Graph
 workflow = StateGraph(GraphState)

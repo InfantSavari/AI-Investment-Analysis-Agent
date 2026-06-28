@@ -4,6 +4,8 @@ import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+from cache import get_cached_api_response, save_api_response
+
 # Load environment variables
 load_dotenv()
 
@@ -19,6 +21,11 @@ async def fetch_alpha_vantage(function: str, ticker: str, **kwargs) -> dict:
     if not ALPHA_VANTAGE_API_KEY:
         return {"Error": "API Key not found in environment variables. Please set ALPHAVANTAGE_API_KEY in .env"}
     
+    cached_data = get_cached_api_response(function, ticker)
+    if cached_data:
+        print(f"[CACHE HIT] Using cached API data for {function} {ticker}")
+        return cached_data
+    
     params = {
         "function": function,
         "symbol": ticker,
@@ -33,9 +40,14 @@ async def fetch_alpha_vantage(function: str, ticker: str, **kwargs) -> dict:
 
     async with httpx.AsyncClient() as client:
         try:
+            print(f"[API CALL] Fetching fresh {function} for {ticker}...")
             response = await client.get(BASE_URL, params=params, timeout=15.0)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            # Don't cache rate limit errors or invalid API key errors
+            if "Error" not in data and "Information" not in data and "Error Message" not in data:
+                save_api_response(function, ticker, data)
+            return data
         except Exception as e:
             return {"Error": str(e)}
 
