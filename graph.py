@@ -42,6 +42,9 @@ You are the Lead Strategic Equities Analyst. You specialize in business models, 
 You will be provided with:
 1. {ticker}'s business description and sector.
 2. A summary of recent news headlines and the Market Sentiment Score for {ticker}.
+
+Data:
+{context}
 </context>
 
 <mandate>
@@ -101,6 +104,9 @@ You are the Lead Quantitative Analyst for an institutional hedge fund. You are e
 You will be provided with:
 1. A Markdown table of {ticker}'s latest financial statements (Revenue, Net Income, Debt, etc.).
 2. The current Market Sentiment Score (1-10) derived from recent news for {ticker}.
+
+Financial Data:
+{context}
 </context>
 
 <mandate>
@@ -145,6 +151,7 @@ async def risk_agent_node(state: GraphState):
     # Risk agent might look at recent market news for volatility and headwinds
     news_data = await fetch_alpha_vantage("NEWS_SENTIMENT", ticker)
     context = str(news_data)[:8000]
+    qual_analysis = state.get("qualitative_analysis", "No qualitative analysis provided.")
     
     # Use Groq model
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.2)
@@ -158,6 +165,12 @@ You are the Chief Risk Officer (CRO) and an adversarial short-seller. Your expli
 You will receive:
 1. Raw financial data and recent news headlines for {ticker}.
 2. The optimistic analysis from the Qualitative Agent.
+
+Data:
+{context}
+
+Qualitative Analysis:
+{qual_analysis}
 </context>
 
 <mandate>
@@ -208,6 +221,15 @@ You are the Portfolio Synthesizer (The Arbiter). You are a strict logic gate. Yo
 
 <context>
 You will receive a JSON state containing the outputs of the Quant Agent, Qual Agent, and Risk Agent for {ticker}. Each output contains a Score (1-10) and a Confidence Rating (0.0-1.0).
+
+Quant Agent Output:
+{quant}
+
+Qual Agent Output:
+{qual}
+
+Risk Agent Output:
+{risk}
 </context>
 
 <mandate>
@@ -248,6 +270,9 @@ async def decision_maker_node(state: GraphState):
     """Decision Maker Agent using Gemini"""
     ticker = state["ticker"]
     synth = state.get("synthesized_report", "")
+    qual = state.get("qualitative_analysis", "")
+    quant = state.get("quantitative_analysis", "")
+    risk = state.get("risk_analysis", "")
     print(f"[{ticker}] Decision Maker Agent is running...")
     
     # Use Gemini model (Google GenAI)
@@ -265,6 +290,18 @@ You will receive the entire graph state for {ticker}, which includes:
 - The Qual Agent's thesis.
 - The Risk Agent's critique.
 - The Arbiter's Final Score and Rationale.
+
+Quant Agent Output:
+{quant}
+
+Qual Agent Output:
+{qual}
+
+Risk Agent Output:
+{risk}
+
+Synthesizer Output:
+{synth}
 </context>
 
 <mandate>
