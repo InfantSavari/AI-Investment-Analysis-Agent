@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import sys
 import os
@@ -33,3 +34,12 @@ async def analyze_ticker(request: AnalysisRequest):
     except Exception as e:
         print(f"Error analyzing {request.ticker}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Mount the Next.js static HTML output if it exists
+frontend_build_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "out")
+if os.path.exists(frontend_build_dir):
+    app.mount("/", StaticFiles(directory=frontend_build_dir, html=True), name="static")
+else:
+    @app.get("/")
+    def read_root():
+        return {"message": "API is running, but Next.js frontend build ('out' directory) was not found."}
