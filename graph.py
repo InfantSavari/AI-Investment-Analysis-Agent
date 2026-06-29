@@ -40,15 +40,21 @@ def get_llm(temperature: float, model: str = 'gemini-3.5-flash'):
     provider = os.getenv("PRIMARY_PROVIDER", "gemini").lower()
     
     if provider == "groq":
-        # Only llama-3.1-8b-instant is allowed on this Groq project
-        primary = ChatGroq(
-            model="llama-3.1-8b-instant",
-            temperature=temperature,
-            max_retries=3,
-        )
-        
-        # Fallback to Gemini if Groq fails
-        fallbacks = []
+        # If user explicitly forces Groq as primary, use Groq models first
+        if 'pro' in model:
+            # Try larger/pro Groq models first, falling back to llama-3.1-8b-instant
+            primary = ChatGroq(model="llama-3.3-70b-versatile", temperature=temperature, max_retries=3)
+            fallbacks = [
+                ChatGroq(model="openai/gpt-oss-120b", temperature=temperature, max_retries=3),
+                ChatGroq(model="llama-3.1-8b-instant", temperature=temperature, max_retries=3)
+            ]
+        else:
+            primary = ChatGroq(model="llama-3.1-8b-instant", temperature=temperature, max_retries=3)
+            fallbacks = [
+                ChatGroq(model="mixtral-8x7b-32768", temperature=temperature, max_retries=3)
+            ]
+            
+        # Also append Gemini as a last-resort backup if available
         try:
             fallbacks.append(
                 ChatGoogleGenerativeAI(
@@ -60,42 +66,35 @@ def get_llm(temperature: float, model: str = 'gemini-3.5-flash'):
         except Exception:
             pass
             
-        return primary.with_fallbacks(fallbacks) if fallbacks else primary
+        return primary.with_fallbacks(fallbacks)
         
     else:
-        # Default Gemini path
+        # Default Gemini path (gives priority to Gemini first)
         primary = ChatGoogleGenerativeAI(
             model=model,
             temperature=temperature,
             max_retries=3,
         )
+        
         # Define fallback models to handle 503 Service Unavailable or high demand
         if 'pro' in model:
-            gemini_fallbacks = [
-                ChatGoogleGenerativeAI(model='gemini-3.1-pro', temperature=temperature, max_retries=3),
-                ChatGoogleGenerativeAI(model='gemini-3.1-flash', temperature=temperature, max_retries=3),
-                ChatGoogleGenerativeAI(model='gemini-1.5-flash-lite', temperature=temperature, max_retries=3)
+            # Try Gemini Pro versions first, then larger/pro Groq models (in case they are enabled),
+            # and finally the verified working llama-3.1-8b-instant model
+            fallbacks = [
+                ChatGoogleGenerativeAI(model='gemini-1.5-pro', temperature=temperature, max_retries=3),
+                ChatGoogleGenerativeAI(model='gemini-3.1-flash-lite', temperature=temperature, max_retries=3),
+                ChatGroq(model="llama-3.3-70b-versatile", temperature=temperature, max_retries=3),
+                ChatGroq(model="openai/gpt-oss-120b", temperature=temperature, max_retries=3),
+                ChatGroq(model="llama-3.1-8b-instant", temperature=temperature, max_retries=3)
             ]
         else:
-            gemini_fallbacks = [
-                ChatGoogleGenerativeAI(model='gemini-3.1-flash', temperature=temperature, max_retries=3),
-                ChatGoogleGenerativeAI(model='gemini-1.5-flash-lite', temperature=temperature, max_retries=3)
+            # Try Gemini Flash versions first, and finally the verified working llama-3.1-8b-instant model
+            fallbacks = [
+                ChatGoogleGenerativeAI(model='gemini-3.1-flash-lite', temperature=temperature, max_retries=3),
+                ChatGoogleGenerativeAI(model='gemini-1.5-flash', temperature=temperature, max_retries=3),
+                ChatGroq(model="llama-3.1-8b-instant", temperature=temperature, max_retries=3)
             ]
             
-        # Append Groq llama-3.1-8b-instant as the final fallback in case of Gemini rate limit exhaustion
-        groq_fallbacks = []
-        try:
-            groq_fallbacks.append(
-                ChatGroq(
-                    model="llama-3.1-8b-instant",
-                    temperature=temperature,
-                    max_retries=3,
-                )
-            )
-        except Exception:
-            pass
-            
-        fallbacks = gemini_fallbacks + groq_fallbacks
         return primary.with_fallbacks(fallbacks)
 
 async def qualitative_agent_node(state: GraphState):
@@ -370,7 +369,7 @@ async def decision_maker_node(state: GraphState):
     await asyncio.sleep(AGENT_SLEEP_TIME)
     
     prompt = f"""<role>
-You are an expert AI Investment Advisor. Your job is to compile the research of your specialized desks regarding {ticker} into a friendly, conversational chat response for the user.
+You are an expert institutional AI Investment Advisor. Your job is to compile the research of your specialized desks regarding {ticker} into a comprehensive, highly detailed, and technical investment report.
 </role>
 
 <context>
@@ -395,23 +394,27 @@ Synthesizer Output:
 </context>
 
 <mandate>
-Write the final response in a normal, conversational chat format. You must determine the final VERDICT for {ticker} based strictly on the Arbiter's Final Score:
+Generate a comprehensive, detail-rich investment report. You must determine the final VERDICT for {ticker} based strictly on the Arbiter's Final Score:
 - Score 7.5 to 10.0: INVEST (Strong Conviction)
 - Score 5.5 to 7.4: HOLD (Wait for Catalyst)
 - Score 1.0 to 5.4: PASS (Capital Destruction Risk)
 
-Address the user directly. Explain the verdict, discuss the bull and bear cases briefly, and explicitly provide the Quant Agent's assessment on the current price and target entry price based on technical indicators. 
+Your report must be highly detailed and include:
+1. **Executive Verdict Summary**: State the final verdict, final arbitrated score, and the "Recommended Holding Duration".
+2. **Quantitative & Technical Deep Dive**: Incorporate all specific financial metrics, historical growth trends, margins, valuation ratios, and technical indicators (RSI, SMA, MACD, current vs. target entry price) provided by the Quant team.
+3. **Strategic Qualitative Reasoning**: Discuss competitive moats, strategic execution, business model scalability, and news sentiment insights.
+4. **Adversarial Risk & Headwinds Analysis**: Elaborate on company-specific (idiosyncratic) risks, systemic/macro risks, and key threat vectors.
+5. **Weighted Synthesis & Mathematical Rationale**: Explain the exact mathematical breakdown of the weighted formula and how the Arbiter settled the score, highlighting if the "Fatal Flaw Penalty" or low-confidence agent discounts were applied.
 </mandate>
 
 <rules>
-- Do NOT output a rigid Markdown report structure (e.g. no # Executive Summary). Write naturally like a knowledgeable financial advisor chatting with a client.
-- You must include the "Recommended Holding Duration" generated by the Quant agent.
-- Explicitly state whether the user should buy at the current price or wait for the target entry price.
-- If the Arbiter triggered the "Fatal Flaw Penalty", highlight this as the primary reason for a PASS verdict.
+- Do not make a brief or generic summary. Every section should be fully elaborated with technical metrics and specific reasoning from the sub-agent outputs.
+- Explicitly state whether the investor should buy at the current price or wait for the target entry price.
+- If the Arbiter triggered the "Fatal Flaw Penalty", highlight this prominently as the primary reason for a PASS verdict.
 </rules>
 
 <output_format>
-Output a conversational message (you may use basic markdown like bolding or bullet points for readability, but keep it chatty).
+Output a structured, formal Markdown report using clear headings, bolding, tables, or lists where appropriate to present technical data and reasoning cleanly.
 </output_format>
 """
     

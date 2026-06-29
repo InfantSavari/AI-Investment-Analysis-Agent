@@ -5,11 +5,9 @@ from langchain_groq import ChatGroq
 load_dotenv()
 
 models_to_test = [
-    "qwen/qwen3.6-27b",
-    "allam-2-7b",
-    "groq/compound-mini",
-    "openai/gpt-oss-safeguard-20b",
-    "llama-3.1-8b-instant"
+    "openai/gpt-oss-120b",
+    "groq/compound",
+    "canopylabs/orpheus-v1-english"
 ]
 
 for model in models_to_test:
