@@ -53,7 +53,6 @@ The system uses a graph-based agent orchestration model built with **LangGraph**
 4. **Risk Agent**: Acts as an adversarial short-seller, hunting for idiosyncratic and systemic threats to the investment thesis.
 5. **Synthesizer (The Arbiter)**: Ingests the scores (and confidences) from the three analysts and executes a weighted mathematical formula (Quant 40%, Qual 30%, Risk 30%). It can also trigger a "Fatal Flaw Penalty" if the risk is overwhelmingly high.
 6. **Decision Maker**: Compiles the graph state into a polished markdown report, issuing a final verdict based on the Arbiter's score.
-
 ```mermaid
 graph TD
     Data[Data Layer: Alpha Vantage API]

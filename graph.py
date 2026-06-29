@@ -12,6 +12,9 @@ from main import fetch_alpha_vantage
 
 load_dotenv()
 
+AGENT_SLEEP_TIME = 15
+
+
 def _get_text(content) -> str:
     if isinstance(content, str):
         return content
@@ -42,7 +45,8 @@ async def qualitative_agent_node(state: GraphState):
     
     # Use Gemini model (Google GenAI)
     llm = ChatGoogleGenerativeAI(model='gemini-3.5-flash', temperature=0.2)
-    await asyncio.sleep(15)
+    print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
+    await asyncio.sleep(AGENT_SLEEP_TIME)
     
     prompt = f"""<role>
 You are the Lead Strategic Equities Analyst. You specialize in business models, competitive moats, and market narratives. You look beyond the spreadsheet to understand product-market fit, management execution, and brand power.
@@ -93,20 +97,25 @@ async def quantitative_agent_node(state: GraphState):
     ticker = state["ticker"]
     print(f"[{ticker}] Quantitative Agent is running...")
     
-    # Fetch financial statements concurrently
+    # Fetch financial statements and technicals concurrently
     results = await asyncio.gather(
         fetch_alpha_vantage("INCOME_STATEMENT", ticker),
         fetch_alpha_vantage("BALANCE_SHEET", ticker),
-        fetch_alpha_vantage("CASH_FLOW", ticker)
+        fetch_alpha_vantage("CASH_FLOW", ticker),
+        fetch_alpha_vantage("GLOBAL_QUOTE", ticker),
+        fetch_alpha_vantage("RSI", ticker, interval="daily", time_period="14", series_type="close"),
+        fetch_alpha_vantage("SMA", ticker, interval="daily", time_period="50", series_type="close"),
+        fetch_alpha_vantage("MACD", ticker, interval="daily", series_type="close")
     )
-    income_data, balance_data, cashflow_data = results
-    context = f"Income Statement:\n{str(income_data)[:5000]}\n\nBalance Sheet:\n{str(balance_data)[:5000]}\n\nCash Flow:\n{str(cashflow_data)[:5000]}"
+    income_data, balance_data, cashflow_data, quote_data, rsi_data, sma_data, macd_data = results
+    context = f"Income Statement:\n{str(income_data)[:5000]}\n\nBalance Sheet:\n{str(balance_data)[:5000]}\n\nCash Flow:\n{str(cashflow_data)[:5000]}\n\nQuote (Current Price):\n{str(quote_data)[:500]}\n\nRSI (14-day):\n{str(rsi_data)[:500]}\n\nSMA (50-day):\n{str(sma_data)[:500]}\n\nMACD:\n{str(macd_data)[:500]}"
     
     # Use a separate Gemini instance
     llm = ChatGoogleGenerativeAI(model='gemini-3.5-flash', temperature=0.2)
-    await asyncio.sleep(15)
+    print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
+    await asyncio.sleep(AGENT_SLEEP_TIME)
     
-    prompt = quantitative_prompt = f"""<role>
+    prompt = f"""<role>
 You are the Lead Quantitative Analyst for an institutional hedge fund. You are entirely objective, emotionally detached, and rely strictly on empirical financial data. You do not care about the company's "story" or "vision"—you only care about the numbers.
 </role>
 
@@ -114,15 +123,17 @@ You are the Lead Quantitative Analyst for an institutional hedge fund. You are e
 You will be provided with:
 1. A Markdown table of {ticker}'s latest financial statements (Revenue, Net Income, Debt, etc.).
 2. The current Market Sentiment Score (1-10) derived from recent news for {ticker}.
+3. Current price and technical indicators (RSI, SMA).
 
-Financial Data:
+Financial & Technical Data:
 {context}
 </context>
 
 <mandate>
 Step 1: Calculate historical trends (YoY growth, margin expansion/compression).
 Step 2: Perform relative valuation (analyze P/E, PEG ratio, FCF yield) to classify {ticker} as strictly one of the following: [DEEP VALUE, FAIRLY VALUED, OVERVALUED].
-Step 3: Calculate the Recommended Holding Duration. 
+Step 3: Analyze technical indicators (RSI, SMA) to determine if the current price is a good entry point or if the buyer should wait for a better target price.
+Step 4: Calculate the Recommended Holding Duration. 
 - If OVERVALUED: 0 Months.
 - If DEEP VALUE & Low Sentiment (< 4): 3 to 5 Years.
 - If DEEP VALUE & High Sentiment (> 7): 6 to 12 Months.
@@ -131,7 +142,7 @@ Step 3: Calculate the Recommended Holding Duration.
 </mandate>
 
 <rules>
-- Do not speculate on future products. Stick to historical/current financials.
+- Do not speculate on future products. Stick to historical/current financials and technicals.
 - If financial data is missing or highly volatile, you MUST penalize your Confidence Score.
 </rules>
 
@@ -140,7 +151,9 @@ Return a JSON object matching this schema:
 {{
   "valuation_classification": "[Classification]",
   "holding_duration": "[Duration]",
-  "analysis_text": "[2-3 paragraphs of rigorous financial analysis detailing margins, debt health, and valuation metrics]",
+  "current_price_assessment": "[Brief sentence on whether current price is good or wait for a target price]",
+  "target_entry_price": "[Float or string specifying target price]",
+  "analysis_text": "[2-3 paragraphs of rigorous financial and technical analysis detailing margins, valuation metrics, and technical entry points]",
   "quantitative_score": [Float 1.0 to 10.0, where 10 is flawless financial health],
   "confidence_score": [Float 0.0 to 1.0, based on data completeness]
 }}
@@ -165,7 +178,8 @@ async def risk_agent_node(state: GraphState):
     
     # Use Groq model
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.2)
-    await asyncio.sleep(15)
+    print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
+    await asyncio.sleep(AGENT_SLEEP_TIME)
     
     prompt = f"""<role>
 You are the Chief Risk Officer (CRO) and an adversarial short-seller. Your explicit goal is to destroy the investment thesis for {ticker}. You assume every company is a value trap or a structural failure waiting to happen until proven otherwise.
@@ -223,7 +237,8 @@ async def synthesizer_node(state: GraphState):
     
     # Use Gemini model. Temperature 0.0 for strict logical workflow
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.0)
-    await asyncio.sleep(15)
+    print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
+    await asyncio.sleep(AGENT_SLEEP_TIME)
     
     prompt = f"""<role>
 You are the Portfolio Synthesizer (The Arbiter). You are a strict logic gate. You do not generate original financial analysis; your job is to ingest the scores from your specialized agents regarding {ticker}, execute a weighted mathematical formula, and resolve contradictions.
@@ -287,16 +302,17 @@ async def decision_maker_node(state: GraphState):
     
     # Use Gemini model (Google GenAI)
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
-    await asyncio.sleep(15)
+    print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
+    await asyncio.sleep(AGENT_SLEEP_TIME)
     
     prompt = f"""<role>
-You are the Lead Portfolio Manager and Chief Investment Officer. Your job is to compile the research of your specialized desks regarding {ticker} into a beautifully formatted, institutional-grade Markdown research report for the firm's clients.
+You are an expert AI Investment Advisor. Your job is to compile the research of your specialized desks regarding {ticker} into a friendly, conversational chat response for the user.
 </role>
 
 <context>
 You will receive the entire graph state for {ticker}, which includes:
 - Raw financial data & news.
-- The Quant Agent's text and duration forecast.
+- The Quant Agent's text, duration forecast, and technical price assessment.
 - The Qual Agent's thesis.
 - The Risk Agent's critique.
 - The Arbiter's Final Score and Rationale.
@@ -315,39 +331,23 @@ Synthesizer Output:
 </context>
 
 <mandate>
-Write the final Research Report. You must determine the final VERDICT for {ticker} based strictly on the Arbiter's Final Score:
+Write the final response in a normal, conversational chat format. You must determine the final VERDICT for {ticker} based strictly on the Arbiter's Final Score:
 - Score 7.5 to 10.0: INVEST (Strong Conviction)
 - Score 5.5 to 7.4: HOLD (Wait for Catalyst)
 - Score 1.0 to 5.4: PASS (Capital Destruction Risk)
 
-Format the report using strict Markdown. Ensure it reads like a cohesive document, not a disjointed set of agent outputs.
+Address the user directly. Explain the verdict, discuss the bull and bear cases briefly, and explicitly provide the Quant Agent's assessment on the current price and target entry price based on technical indicators. 
 </mandate>
 
 <rules>
-- The VERDICT must be displayed prominently at the top.
+- Do NOT output a rigid Markdown report structure (e.g. no # Executive Summary). Write naturally like a knowledgeable financial advisor chatting with a client.
 - You must include the "Recommended Holding Duration" generated by the Quant agent.
-- If the Arbiter triggered the "Fatal Flaw Penalty", you must highlight this in the Executive Summary as the primary reason for a PASS verdict.
+- Explicitly state whether the user should buy at the current price or wait for the target entry price.
+- If the Arbiter triggered the "Fatal Flaw Penalty", highlight this as the primary reason for a PASS verdict.
 </rules>
 
 <output_format>
-Output ONLY valid Markdown. Use this exact structure:
-
-# Investment Research Report: {ticker}
-**Verdict:** [INVEST / HOLD / PASS]
-**Arbiter Confidence Score:** [Final Score]/10
-**Recommended Time Horizon:** [Duration from Quant Agent]
-
-## Executive Summary
-[Synthesize the Arbiter's rationale and the overarching narrative in 2 paragraphs]
-
-## The Bull Case (Growth & Financial Health)
-[Combine the best points from the Quant and Qual agents. Highlight the moat and financial trends]
-
-## Risk Factors & Margin of Safety
-[Present the Risk Agent's critique. Highlight the top threats and macro headwinds]
-
-## Final Committee Justification
-[Explain exactly why the committee chose to Invest, Hold, or Pass, referencing the contradiction resolution if applicable]
+Output a conversational message (you may use basic markdown like bolding or bullet points for readability, but keep it chatty).
 </output_format>
 """
     
