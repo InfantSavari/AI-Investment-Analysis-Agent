@@ -4,6 +4,7 @@
 This project is an AI-driven, multi-agent investment analysis tool. It takes a stock ticker and runs a comprehensive, institutional-grade analysis using LangGraph. The system orchestrates multiple specialized AI agents (Qualitative, Quantitative, and Risk Analysts) to evaluate a company from different angles. An Arbiter agent then synthesizes these perspectives mathematically, and a Decision Maker agent formats a final markdown research report with a final verdict (INVEST, HOLD, or PASS).
 
 ## How to Run It — Setup and Run Steps
+Deployed at: https://ai-investment-analysis-agent.onrender.com/
 
 ### Prerequisites
 - Python 3.10+
@@ -52,6 +53,26 @@ The system uses a graph-based agent orchestration model built with **LangGraph**
 4. **Risk Agent**: Acts as an adversarial short-seller, hunting for idiosyncratic and systemic threats to the investment thesis.
 5. **Synthesizer (The Arbiter)**: Ingests the scores (and confidences) from the three analysts and executes a weighted mathematical formula (Quant 40%, Qual 30%, Risk 30%). It can also trigger a "Fatal Flaw Penalty" if the risk is overwhelmingly high.
 6. **Decision Maker**: Compiles the graph state into a polished markdown report, issuing a final verdict based on the Arbiter's score.
+
+```mermaid
+graph TD
+    Data[Data Layer: Alpha Vantage API]
+    Qual[Qualitative Agent]
+    Quant[Quantitative Agent]
+    Risk[Risk Agent]
+    Arbiter{Synthesizer / Arbiter}
+    DecisionMaker[Decision Maker]
+    Output([Final Verdict: INVEST / HOLD / PASS])
+
+    Data --> Qual
+    Data --> Quant
+    Data --> Risk
+    Qual --> Arbiter
+    Quant --> Arbiter
+    Risk --> Arbiter
+    Arbiter -->|Weighted Scores & Fatal Flaw Check| DecisionMaker
+    DecisionMaker -->|Markdown Report| Output
+```
 
 ## Key Decisions & Trade-offs
 - **Model Choice**: Selected Gemini-3.5-Flash for all agents due to its large context window (helpful for reading financial statements) and fast inference times. 
