@@ -116,7 +116,7 @@ async def get_latest_news_and_sentiments(ticker: str) -> str:
     Retrieve the latest news articles and market sentiment for a given stock ticker.
     Returns the news and sentiment analysis in markdown format.
     """
-    data = await fetch_alpha_vantage("NEWS_SENTIMENT", ticker)
+    data = await fetch_alpha_vantage("NEWS_SENTIMENT", ticker, limit="10", sort="LATEST")
     
     md_output = f"# News & Market Sentiment for {ticker.upper()}\n\n"
     

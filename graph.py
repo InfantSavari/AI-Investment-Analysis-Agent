@@ -3,6 +3,7 @@ import asyncio
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from dotenv import load_dotenv
@@ -34,17 +35,80 @@ class GraphState(TypedDict):
     synthesized_report: str
     final_report: str
 
+def get_llm(temperature: float, model: str = 'gemini-3.5-flash'):
+    """Helper to get a fresh Gemini or Groq client with automatic retries and model fallbacks."""
+    provider = os.getenv("PRIMARY_PROVIDER", "gemini").lower()
+    
+    if provider == "groq":
+        # Only llama-3.1-8b-instant is allowed on this Groq project
+        primary = ChatGroq(
+            model="llama-3.1-8b-instant",
+            temperature=temperature,
+            max_retries=3,
+        )
+        
+        # Fallback to Gemini if Groq fails
+        fallbacks = []
+        try:
+            fallbacks.append(
+                ChatGoogleGenerativeAI(
+                    model=model,
+                    temperature=temperature,
+                    max_retries=3,
+                )
+            )
+        except Exception:
+            pass
+            
+        return primary.with_fallbacks(fallbacks) if fallbacks else primary
+        
+    else:
+        # Default Gemini path
+        primary = ChatGoogleGenerativeAI(
+            model=model,
+            temperature=temperature,
+            max_retries=3,
+        )
+        # Define fallback models to handle 503 Service Unavailable or high demand
+        if 'pro' in model:
+            gemini_fallbacks = [
+                ChatGoogleGenerativeAI(model='gemini-3.1-pro', temperature=temperature, max_retries=3),
+                ChatGoogleGenerativeAI(model='gemini-3.1-flash', temperature=temperature, max_retries=3),
+                ChatGoogleGenerativeAI(model='gemini-1.5-flash-lite', temperature=temperature, max_retries=3)
+            ]
+        else:
+            gemini_fallbacks = [
+                ChatGoogleGenerativeAI(model='gemini-3.1-flash', temperature=temperature, max_retries=3),
+                ChatGoogleGenerativeAI(model='gemini-1.5-flash-lite', temperature=temperature, max_retries=3)
+            ]
+            
+        # Append Groq llama-3.1-8b-instant as the final fallback in case of Gemini rate limit exhaustion
+        groq_fallbacks = []
+        try:
+            groq_fallbacks.append(
+                ChatGroq(
+                    model="llama-3.1-8b-instant",
+                    temperature=temperature,
+                    max_retries=3,
+                )
+            )
+        except Exception:
+            pass
+            
+        fallbacks = gemini_fallbacks + groq_fallbacks
+        return primary.with_fallbacks(fallbacks)
+
 async def qualitative_agent_node(state: GraphState):
     """Qualitative Analysis Agent using Gemini"""
     ticker = state["ticker"]
     print(f"[{ticker}] Qualitative Agent is running...")
     
-    # Fetch news/sentiment data
-    news_data = await fetch_alpha_vantage("NEWS_SENTIMENT", ticker)
+    # Fetch news/sentiment data (limit to 10 articles to avoid token bloat)
+    news_data = await fetch_alpha_vantage("NEWS_SENTIMENT", ticker, limit="10", sort="LATEST")
     context = str(news_data)[:10000] # Trim to avoid context limits if extremely large
     
-    # Use Gemini model (Google GenAI)
-    llm = ChatGoogleGenerativeAI(model='gemini-3.5-flash', temperature=0.2)
+    # Use Gemini model (Google GenAI) with automatic fallbacks
+    llm = get_llm(temperature=0.2)
     print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
     await asyncio.sleep(AGENT_SLEEP_TIME)
     
@@ -110,8 +174,8 @@ async def quantitative_agent_node(state: GraphState):
     income_data, balance_data, cashflow_data, quote_data, rsi_data, sma_data, macd_data = results
     context = f"Income Statement:\n{str(income_data)[:5000]}\n\nBalance Sheet:\n{str(balance_data)[:5000]}\n\nCash Flow:\n{str(cashflow_data)[:5000]}\n\nQuote (Current Price):\n{str(quote_data)[:500]}\n\nRSI (14-day):\n{str(rsi_data)[:500]}\n\nSMA (50-day):\n{str(sma_data)[:500]}\n\nMACD:\n{str(macd_data)[:500]}"
     
-    # Use a separate Gemini instance
-    llm = ChatGoogleGenerativeAI(model='gemini-3.5-flash', temperature=0.2)
+    # Use a separate Gemini instance with automatic fallbacks
+    llm = get_llm(temperature=0.2)
     print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
     await asyncio.sleep(AGENT_SLEEP_TIME)
     
@@ -171,13 +235,13 @@ async def risk_agent_node(state: GraphState):
     ticker = state["ticker"]
     print(f"[{ticker}] Risk Agent is running...")
     
-    # Risk agent might look at recent market news for volatility and headwinds
-    news_data = await fetch_alpha_vantage("NEWS_SENTIMENT", ticker)
+    # Risk agent might look at recent market news for volatility and headwinds (limit to 10 articles to avoid token bloat)
+    news_data = await fetch_alpha_vantage("NEWS_SENTIMENT", ticker, limit="10", sort="LATEST")
     context = str(news_data)[:8000]
     qual_analysis = state.get("qualitative_analysis", "No qualitative analysis provided.")
     
-    # Use Groq model
-    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.2)
+    # Use Gemini model with automatic fallbacks
+    llm = get_llm(temperature=0.2)
     print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
     await asyncio.sleep(AGENT_SLEEP_TIME)
     
@@ -235,8 +299,8 @@ async def synthesizer_node(state: GraphState):
     risk = state.get("risk_analysis", "")
     print(f"[{ticker}] The Arbiter (Synthesizer) is running...")
     
-    # Use Gemini model. Temperature 0.0 for strict logical workflow
-    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.0)
+    # Use Gemini model. Temperature 0.0 for strict logical workflow, with automatic fallbacks
+    llm = get_llm(temperature=0.0)
     print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
     await asyncio.sleep(AGENT_SLEEP_TIME)
     
@@ -300,8 +364,8 @@ async def decision_maker_node(state: GraphState):
     risk = state.get("risk_analysis", "")
     print(f"[{ticker}] Decision Maker Agent is running...")
     
-    # Use Gemini model (Google GenAI)
-    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
+    # Use Gemini model (Google GenAI) with automatic fallbacks, using gemini-3.5-pro for final advice
+    llm = get_llm(temperature=0.3, model='gemini-3.5-pro')
     print(f"[{ticker}] Sleeping for {AGENT_SLEEP_TIME} seconds to respect API limits...")
     await asyncio.sleep(AGENT_SLEEP_TIME)
     
